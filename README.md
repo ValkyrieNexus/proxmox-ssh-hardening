@@ -6,5 +6,7 @@ Recommendation for initial installation:
 # Download the script first
 
 curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh_hardening.sh -o ssh_hardening.sh
+
 chmod +x ssh_hardening.sh # Make it executable 
+
 sudo ./ssh_hardening.sh # Run it interactively
