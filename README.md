@@ -5,11 +5,11 @@ Recommendation for initial installation:
 
 # Download, Permissions, Execute
 
-curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh_hardening.sh -o ssh_hardening.sh
+curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh_hardening.sh -o ssh-hardening.sh
 
-chmod +x ssh_hardening.sh 
+chmod +x ssh-hardening.sh 
 
-sudo ./ssh_hardening.sh
+sudo ./ssh-hardening.sh
 
 # 1. Download, View/Edit
 wget https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh-config-manager.sh
