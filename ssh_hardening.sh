@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Secure SSH setup & key generator
 # Works on Debian/Ubuntu/Proxmox (VM/LXC)
-# v2.0
+# v1.0
 
 set -Eeuo pipefail
 
