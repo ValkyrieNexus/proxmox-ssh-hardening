@@ -247,6 +247,10 @@ run_validation() {
     echo_fail "SSH service is not running"
   fi
   
+  # Get current SSH Port
+  get_current_ssh_port() {
+  grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22"
+  }
   # Test SSH port
   local current_port=$(get_current_ssh_port)
   ((tests_total++))
@@ -306,6 +310,10 @@ run_validation() {
     echo_warn "Some tests failed. Please review the configuration."
     return 1
   fi
+}
+ # Get current SSH Port
+  get_current_ssh_port() {
+    grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22"
 }
 
 # ---------- Main Menu ----------
