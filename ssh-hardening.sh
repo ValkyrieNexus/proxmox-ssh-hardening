@@ -1,4 +1,32 @@
 #!/usr/bin/env bash
+# ==========================================
+# DEPRECATED: This script is deprecated
+# ==========================================
+# Please use the new SSH Management Suite instead:
+#   curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh-management-suite.sh | sudo bash
+#
+# This script has known issues with:
+# - Socket activation conflicts
+# - Port binding problems on modern systemd
+# - Limited rollback capabilities
+#
+# The SSH Management Suite provides all functionality
+# of this script plus comprehensive fixes and features.
+# ==========================================
+
+echo "WARNING: This script is deprecated!"
+echo "Please use the SSH Management Suite instead:"
+echo "curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh-management-suite.sh | sudo bash"
+echo
+read -p "Continue with deprecated script anyway? [y/N]: " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Exiting. Please use the SSH Management Suite."
+    exit 1
+fi
+
+# Original script content follows...
+#!/usr/bin/env bash
 # Secure SSH setup & key generator
 # Works on Debian/Ubuntu/Proxmox (VM/LXC)
 # v1.0
