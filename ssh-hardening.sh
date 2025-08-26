@@ -24,7 +24,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Exiting. Please use the SSH Management Suite."
     exit 1
 fi
-
+# Yeah, get the new stuff!
 # Original script content follows...
 #!/usr/bin/env bash
 # Secure SSH setup & key generator
