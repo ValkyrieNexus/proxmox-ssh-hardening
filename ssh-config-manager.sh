@@ -1,4 +1,27 @@
 #!/usr/bin/env bash
+# ==========================================
+# DEPRECATED: This script is deprecated
+# ==========================================
+# This functionality is now included in the
+# SSH Management Suite (Option 2: Configure multi-IP access)
+#
+# Use: curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh-management-suite.sh | sudo bash
+# ==========================================
+
+echo "DEPRECATED: This script has been replaced by the SSH Management Suite"
+echo "Run the suite and choose Option 2 for multi-IP configuration"
+echo
+echo "New command:"
+echo "curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening/main/ssh-management-suite.sh | sudo bash"
+echo
+read -p "Continue anyway? [y/N]: " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+fi
+
+# Original script content follows...
+#!/usr/bin/env bash
 # SSH Configuration Manager
 # Modify SSH hardening settings after initial setup
 # v1.0
