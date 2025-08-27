@@ -1,395 +1,12 @@
-# ---------- Rollback Management ----------
-find_hardening_sessions() {
-  local sessions=()
-  
-  # Look for hardening reports
-  for report in /root/ssh-hardening-report-*; do
-    if [[ -f "$report" ]]; then
-      local timestamp=$(basename "$report" | sed 's/ssh-hardening-report-//' | sed 's/.txt//')
-      if [[ -d "/root/ssh-hardening-backups-$timestamp" ]]; then
-        sessions+=("$timestamp")
-      fi
-    fi
-  done
-  
-  # Look for config change sessions
-  for report in /root/ssh-config-changes-* /root/ssh-multi-ip-config-*; do
-    if [[ -f "$report" ]]; then
-      local timestamp=$(basename "$report" | sed -E 's/ssh-(config-changes|multi-ip-config)-//' | sed 's/.txt//')
-      if [[ -d "/root/ssh-config-backups-$timestamp" ]] || [[ -f "/root/sshd_config.backup.$timestamp" ]]; then
-        sessions+=("$timestamp")
-      fi
-    fi
-  done
-  
-  printf '%s\n' "${sessions[@]}" | sort -u
-}
-
-show_session_details() {
-  local session="$1"
-  local report=""
-  
-  # Find the report file
-  for possible_report in "/root/ssh-hardening-report-$session.txt" "/root/ssh-config-changes-$session.txt" "/root/ssh-multi-ip-config-$session.txt"; do
-    if [[ -f "$possible_report" ]]; then
-      report="$possible_report"
-      break
-    fi
-  done
-  
-  if [[ -n "$report" ]]; then
-    echo "Session Details:"
-    echo "==============="
-    head -15 "$report"
-    echo
-    
-    # Show what files were changed
-    echo "Files that were changed:"
-    local changes_found=false
-    for backup_dir in "/root/ssh-hardening-backups-$session" "/root/ssh-config-backups-$session"; do
-      if [[ -f "$backup_dir/_changed-files.txt" ]]; then
-        cat "$backup_dir/_changed-files.txt" | head -10
-        changes_found=true
-        break
-      fi
-    done
-    
-    if [[ "$changes_found" = false ]]; then
-      echo "  /etc/ssh/sshd_config (inferred from backup files)"
-    fi
-  else
-    echo "No detailed report found for session $session"
-  fi
-}
-
-rollback_session() {
-  local session="$1"
-  echo "Rolling back session: $session"
-  
-  # Try automated rollback first
-  local rollback_scripts=("/root/ssh-hardening-rollback-$session.sh" "/root/ssh-config-rollback-$session.sh")
-  for script in "${rollback_scripts[@]}"; do
-    if [[ -x "$script" ]]; then
-      echo "Using automated rollback script: $script"
-      if ASK "Execute rollback script?"; then
-        if "$script"; then
-          echo "Automated rollback completed successfully."
-          return 0
-        else
-          echo "Automated rollback failed. Trying manual restore..."
-          break
-        fi
-      fi
-    fi
-  done
-  
-  # Manual rollback
-  echo "Performing manual rollback..."
-  
-  # Find backup files
-  local sshd_backup=""
-  for backup_location in "/root/ssh-hardening-backups-$session" "/root/ssh-config-backups-$session" "/root"; do
-    for backup_file in "$backup_location"/sshd_config*.bak "$backup_location/sshd_config.backup.$session"; do
-      if [[ -f "$backup_file" ]]; then
-        sshd_backup="$backup_file"
-        break 2
-      fi
-    done
-  done
-  
-  if [[ -z "$sshd_backup" ]]; then
-    echo "ERROR: No SSH config backup found for session $session"
-    return 1
-  fi
-  
-  echo "Found backup: $sshd_backup"
-  if ASK "Restore SSH configuration from backup?"; then
-    if cp "$sshd_backup" /etc/ssh/sshd_config; then
-      echo "SSH configuration restored from backup."
-      
-      # Test and restart SSH
-      if sshd -t; then
-        # Restore socket if it was masked
-        systemctl unmask ssh.socket 2>/dev/null || true
-        systemctl enable ssh.socket 2>/dev/null || true
-        
-        systemctl restart ssh
-        echo "SSH service restarted successfully."
-        
-        echo
-        echo "Current SSH status:"
-        systemctl status ssh --no-pager -l | head -10
-        return 0
-      else
-        echo "ERROR: SSH configuration test failed after restore."
-        return 1
-      fi
-    else
-      echo "ERROR: Failed to restore SSH configuration."
-      return 1
-    fi
-  fi
-  
-  return 1
-}
-
-rollback_management() {
-  echo "SSH Rollback Management"
-  echo "======================"
-  echo
-  
-  local sessions=($(find_hardening_sessions))
-  
-  if [[ ${#sessions[@]} -eq 0 ]]; then
-    echo "No SSH hardening sessions found."
-    echo
-    echo "Looking for:"
-    echo "  - /root/ssh-hardening-report-*.txt"
-    echo "  - /root/ssh-config-changes-*.txt"
-    echo "  - /root/ssh-multi-ip-config-*.txt"
-    echo "  - Corresponding backup files"
-    return 0
-  fi
-  
-  echo "Found ${#sessions[@]} SSH session(s):"
-  echo
-  
-  for i in "${!sessions[@]}"; do
-    local session="${sessions[$i]}"
-    echo "$((i+1)). Session: $session"
-    
-    # Show brief info
-    if [[ -f "/root/ssh-hardening-report-$session.txt" ]]; then
-      echo "   Type: SSH Hardening"
-    elif [[ -f "/root/ssh-config-changes-$session.txt" ]]; then
-      echo "   Type: Configuration Changes"
-    elif [[ -f "/root/ssh-multi-ip-config-$session.txt" ]]; then
-      echo "   Type: Multi-IP Configuration"
-    fi
-    echo
-  done
-  
-  while true; do
-    echo "Rollback Options:"
-    echo "1) View session details"
-    echo "2) Rollback a session"
-    echo "3) Return to main menu"
-    echo
-    
-    read -r -p "Choose an option (1-3): " choice </dev/tty
-    
-    case "$choice" in
-      1)
-        read -r -p "Enter session number (1-${#sessions[@]}): " session_num </dev/tty
-        if [[ "$session_num" =~ ^[0-9]+$ ]] && [[ "$session_num" -ge 1 ]] && [[ "$session_num" -le ${#sessions[@]} ]]; then
-          local selected_session="${sessions[$((session_num-1))]}"
-          echo
-          show_session_details "$selected_session"
-          echo
-        else
-          echo "Invalid session number."
-        fi
-        ;;
-      2)
-        read -r -p "Enter session number to rollback (1-${#sessions[@]}): " session_num </dev/tty
-        if [[ "$session_num" =~ ^[0-9]+$ ]] && [[ "$session_num" -ge 1 ]] && [[ "$session_num" -le ${#sessions[@]} ]]; then
-          local selected_session="${sessions[$((session_num-1))]}"
-          echo
-          show_session_details "$selected_session"
-          echo
-          if ASK "Proceed with rollback of session $selected_session?"; then
-            rollback_session "$selected_session"
-          fi
-          echo
-        else
-          echo "Invalid session number."
-        fi
-        ;;
-      3)
-        return 0
-        ;;
-      *)
-        echo "Invalid option."
-        ;;
-    esac
-  done
-}
-
-# ---------- Validation ----------
-run_validation() {
-  echo "SSH Configuration Validation"
-  echo "============================"
-  echo
-  
-  local tests_passed=0
-  local tests_total=0
-  
-  echo_pass() { echo "[PASS] $1"; }
-  echo_fail() { echo "[FAIL] $1"; }
-  echo_warn() { echo "[WARN] $1"; }
-  
-  # Test SSH configuration
-  ((tests_total++))
-  if sshd -t 2>/dev/null; then
-    echo_pass "SSH configuration syntax is valid"
-    ((tests_passed++))
-  else
-    echo_fail "SSH configuration has syntax errors"
-    echo "Run: sudo sshd -t"
-  fi
-  
-  # Test SSH service
-  ((tests_total++))
-  if systemctl is-active ssh >/dev/null 2>&1 || systemctl is-active sshd >/dev/null 2>&1; then
-    echo_pass "SSH service is running"
-    ((tests_passed++))
-  else
-    echo_fail "SSH service is not running"
-  fi
-  
-  # Get current SSH Port
-  get_current_ssh_port() {
-  grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22"
-  }
-  # Test SSH port
-  local current_port=$(get_current_ssh_port)
-  ((tests_total++))
-  if netstat -tlnp 2>/dev/null | grep ":${current_port} " | grep -q sshd || ss -tlnp 2>/dev/null | grep ":${current_port} " | grep -q sshd; then
-    echo_pass "SSH is listening on port $current_port"
-    ((tests_passed++))
-  else
-    echo_fail "SSH is not listening on configured port $current_port"
-  fi
-  
-  # Test root login
-  ((tests_total++))
-  if grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null; then
-    echo_pass "Root login is disabled"
-    ((tests_passed++))
-  else
-    echo_warn "Root login may still be enabled"
-  fi
-  
-  # Test password authentication
-  ((tests_total++))
-  if grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
-    echo_pass "Password authentication is disabled"
-    ((tests_passed++))
-  else
-    echo_warn "Password authentication may still be enabled"
-  fi
-  
-  # Test public key authentication
-  ((tests_total++))
-  if grep -q "^PubkeyAuthentication yes" /etc/ssh/sshd_config 2>/dev/null; then
-    echo_pass "Public key authentication is enabled"
-    ((tests_passed++))
-  else
-    echo_warn "Public key authentication setting not found"
-  fi
-  
-  # Test user restrictions
-  ((tests_total++))
-  if grep -q "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null; then
-    local allowed_users=$(grep "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers\s*//')
-    echo_pass "User access is restricted: $allowed_users"
-    ((tests_passed++))
-  else
-    echo_warn "No AllowUsers directive found - all users may be allowed"
-  fi
-  
-  echo
-  echo "Validation Summary"
-  echo "=================="
-  echo "Tests passed: $tests_passed/$tests_total"
-  
-  if [[ $tests_passed -eq $tests_total ]]; then
-    echo_pass "All tests passed! SSH hardening appears successful."
-    return 0
-  else
-    echo_warn "Some tests failed. Please review the configuration."
-    return 1
-  fi
-}
- # Get current SSH Port
-  get_current_ssh_port() {
-    grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22"
-}
-
-# ---------- Main Menu ----------
-show_main_menu() {
-  clear
-  echo "SSH Management Suite v${VERSION}"
-  echo "==============================="
-  echo "Host: $(hostname -f 2>/dev/null || hostname)"
-  echo "Current SSH Port: $(get_current_ssh_port)"
-  echo
-  echo "1) Harden SSH (new installation)"
-  echo "2) Configure multi-IP access"  
-  echo "3) Manage/rollback previous sessions"
-  echo "4) Validate current configuration"
-  echo "5) Exit"
-  echo
-}
-
-main() {
-  require_root
-  
-  while true; do
-    show_main_menu
-    read -r -p "Choose an option (1-5): " choice </dev/tty
-    
-    case "$choice" in
-      1)
-        echo
-        echo "Starting SSH Hardening Process..."
-        echo "================================"
-        ssh_hardening_main
-        echo
-        read -r -p "Press Enter to continue..." </dev/tty
-        ;;
-      2)
-        echo
-        echo "Starting Multi-IP Configuration..."
-        echo "================================="
-        multi_ip_config
-        echo
-        read -r -p "Press Enter to continue..." </dev/tty
-        ;;
-      3)
-        echo
-        rollback_management
-        echo
-        read -r -p "Press Enter to continue..." </dev/tty
-        ;;
-      4)
-        echo
-        run_validation
-        echo
-        read -r -p "Press Enter to continue..." </dev/tty
-        ;;
-      5)
-        echo "Exiting SSH Management Suite..."
-        exit 0
-        ;;
-      *)
-        echo "Invalid option. Please choose 1-5."
-        sleep 2
-        ;;
-    esac
-  done
-}
-
-# Run main function
-main "$@"!/usr/bin/env bash
+#!/usr/bin/env bash
 # SSH Management Suite
 # Unified SSH hardening, configuration, and rollback management
-# v3.0
+# v3.1 - Fixed function ordering
 
 set -Eeuo pipefail
 
 # ---------- Global Variables ----------
-VERSION="3.0"
+VERSION="3.1"
 NOW=""
 REPORT=""
 BACKUP_DIR=""
@@ -398,14 +15,16 @@ BACKUP_INDEX=""
 CHANGED_INDEX=""
 SSH_SERVICE=""
 
-# ---------- Helpers ----------
+# ---------- Core Helper Functions (Must be defined first) ----------
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
     echo "ERROR: run as root (sudo -i or sudo $0)"; exit 1
   fi
 }
 
-timestamp() { date +%F-%H%M%S; }
+timestamp() { 
+  date +%F-%H%M%S; 
+}
 
 ASK() {
   local prompt="$1"
@@ -424,6 +43,67 @@ ASK() {
   done
 }
 
+detect_ssh_service() {
+  if systemctl list-unit-files | grep -q '^sshd\.service'; then
+    echo sshd
+  else
+    echo ssh
+  fi
+}
+
+get_current_ssh_port() {
+  grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22"
+}
+
+get_current_allow_users() {
+  grep -E "^AllowUsers\s+" /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers\s*//' || echo ""
+}
+
+random_pass() { 
+  openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+}
+
+validate_network() {
+  local input="$1"
+  
+  # Check for CIDR notation
+  if [[ "$input" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+    local ip="${input%/*}"
+    local cidr="${input#*/}"
+    
+    # Validate CIDR range
+    if [[ "$cidr" -gt 32 ]] || [[ "$cidr" -lt 1 ]]; then
+      return 1
+    fi
+    
+    # Validate IP octets
+    IFS='.' read -ra octets <<< "$ip"
+    for octet in "${octets[@]}"; do
+      if [[ "$octet" -gt 255 ]] || [[ "$octet" -lt 0 ]]; then
+        return 1
+      fi
+    done
+    return 0
+    
+  # Check for single IP
+  elif [[ "$input" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    IFS='.' read -ra octets <<< "$input"
+    for octet in "${octets[@]}"; do
+      if [[ "$octet" -gt 255 ]] || [[ "$octet" -lt 0 ]]; then
+        return 1
+      fi
+    done
+    return 0
+    
+  # Check for hostname (basic validation)
+  elif [[ "$input" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]] && [[ ${#input} -le 253 ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# ---------- File Management Functions ----------
 backup_file() {
   local src="$1"
   local dst="${BACKUP_DIR}/$(basename "$src").${NOW}.bak"
@@ -488,114 +168,7 @@ append_line_with_backup() {
   echo "$target" >> "$CHANGED_INDEX"
 }
 
-random_pass() { 
-  openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
-}
-
-detect_ssh_service() {
-  if systemctl list-unit-files | grep -q '^sshd\.service'; then
-    echo sshd
-  else
-    echo ssh
-  fi
-}
-
-get_current_ssh_port() {
-  grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22"
-}
-
-validate_network() {
-  local input="$1"
-  
-  # Check for CIDR notation
-  if [[ "$input" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
-    local ip="${input%/*}"
-    local cidr="${input#*/}"
-    
-    # Validate CIDR range
-    if [[ "$cidr" -gt 32 ]] || [[ "$cidr" -lt 1 ]]; then
-      return 1
-    fi
-    
-    # Validate IP octets
-    IFS='.' read -ra octets <<< "$ip"
-    for octet in "${octets[@]}"; do
-      if [[ "$octet" -gt 255 ]] || [[ "$octet" -lt 0 ]]; then
-        return 1
-      fi
-    done
-    return 0
-    
-  # Check for single IP
-  elif [[ "$input" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    IFS='.' read -ra octets <<< "$input"
-    for octet in "${octets[@]}"; do
-      if [[ "$octet" -gt 255 ]] || [[ "$octet" -lt 0 ]]; then
-        return 1
-      fi
-    done
-    return 0
-    
-  # Check for hostname (basic validation)
-  elif [[ "$input" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]] && [[ ${#input} -le 253 ]]; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-# ---------- SSH Hardening Functions ----------
-ssh_hardening_main() {
-  NOW="$(timestamp)"
-  REPORT="/root/ssh-hardening-report-${NOW}.txt"
-  BACKUP_DIR="/root/ssh-hardening-backups-${NOW}"
-  ROLLBACK="/root/ssh-hardening-rollback-${NOW}.sh"
-  BACKUP_INDEX="${BACKUP_DIR}/_backup-index.txt"
-  CHANGED_INDEX="${BACKUP_DIR}/_changed-files.txt"
-  mkdir -p "$BACKUP_DIR"
-  touch "$BACKUP_INDEX" "$CHANGED_INDEX"
-  SSH_SERVICE="$(detect_ssh_service)"
-  
-  {
-    echo "SSH Hardening & Key Report - ${NOW}"
-    echo "Host: $(hostname -f 2>/dev/null || hostname)"
-    echo "IP: $(hostname -I | awk '{print $1}')"
-    echo "Backups dir: ${BACKUP_DIR}"
-    echo "SSH service: ${SSH_SERVICE}"
-    echo "Current SSH port: $(get_current_ssh_port)"
-    echo "=================================="
-    echo
-  } > "$REPORT"
-  
-  # Initialize rollback script
-  {
-    echo "#!/usr/bin/env bash"
-    echo "# SSH Hardening Rollback Script - ${NOW}"
-    echo "set -Eeuo pipefail"
-    echo
-    echo "echo 'Rolling back SSH hardening changes...'"
-    echo
-  } > "$ROLLBACK"
-  chmod +x "$ROLLBACK"
-  
-  # User inputs
-  read -r -p "Admin username to create/use for SSH (default: admin): " ADMIN </dev/tty || ADMIN="admin"
-  ADMIN="${ADMIN:-admin}"
-  
-  read -r -p "SSH port to use (default: 2222): " SSH_PORT </dev/tty || SSH_PORT="2222"
-  SSH_PORT="${SSH_PORT:-2222}"
-  
-  read -r -p "Optional allow-from (CIDR/IP/hostname) for ${ADMIN} (empty = any): " ALLOW_FROM </dev/tty || ALLOW_FROM=""
-  
-  # Execute hardening steps
-  create_admin_user "$ADMIN"
-  generate_ssh_keys "$ADMIN"
-  install_ssh_keys "$ADMIN"
-  apply_ssh_hardening "$ADMIN" "$SSH_PORT" "$ALLOW_FROM"
-  restart_ssh_service "$SSH_PORT"
-  finalize_hardening_report "$ADMIN" "$SSH_PORT"
-}
-
+# ---------- SSH Hardening Implementation Functions ----------
 create_admin_user() {
   local admin_user="$1"
   
@@ -948,7 +521,58 @@ finalize_hardening_report() {
   echo
 }
 
-# ---------- Multi-IP Configuration ----------
+# ---------- Main Feature Functions ----------
+ssh_hardening_main() {
+  NOW="$(timestamp)"
+  REPORT="/root/ssh-hardening-report-${NOW}.txt"
+  BACKUP_DIR="/root/ssh-hardening-backups-${NOW}"
+  ROLLBACK="/root/ssh-hardening-rollback-${NOW}.sh"
+  BACKUP_INDEX="${BACKUP_DIR}/_backup-index.txt"
+  CHANGED_INDEX="${BACKUP_DIR}/_changed-files.txt"
+  mkdir -p "$BACKUP_DIR"
+  touch "$BACKUP_INDEX" "$CHANGED_INDEX"
+  SSH_SERVICE="$(detect_ssh_service)"
+  
+  {
+    echo "SSH Hardening & Key Report - ${NOW}"
+    echo "Host: $(hostname -f 2>/dev/null || hostname)"
+    echo "IP: $(hostname -I | awk '{print $1}')"
+    echo "Backups dir: ${BACKUP_DIR}"
+    echo "SSH service: ${SSH_SERVICE}"
+    echo "Current SSH port: $(get_current_ssh_port)"
+    echo "=================================="
+    echo
+  } > "$REPORT"
+  
+  # Initialize rollback script
+  {
+    echo "#!/usr/bin/env bash"
+    echo "# SSH Hardening Rollback Script - ${NOW}"
+    echo "set -Eeuo pipefail"
+    echo
+    echo "echo 'Rolling back SSH hardening changes...'"
+    echo
+  } > "$ROLLBACK"
+  chmod +x "$ROLLBACK"
+  
+  # User inputs
+  read -r -p "Admin username to create/use for SSH (default: admin): " ADMIN </dev/tty || ADMIN="admin"
+  ADMIN="${ADMIN:-admin}"
+  
+  read -r -p "SSH port to use (default: 2222): " SSH_PORT </dev/tty || SSH_PORT="2222"
+  SSH_PORT="${SSH_PORT:-2222}"
+  
+  read -r -p "Optional allow-from (CIDR/IP/hostname) for ${ADMIN} (empty = any): " ALLOW_FROM </dev/tty || ALLOW_FROM=""
+  
+  # Execute hardening steps
+  create_admin_user "$ADMIN"
+  generate_ssh_keys "$ADMIN"
+  install_ssh_keys "$ADMIN"
+  apply_ssh_hardening "$ADMIN" "$SSH_PORT" "$ALLOW_FROM"
+  restart_ssh_service "$SSH_PORT"
+  finalize_hardening_report "$ADMIN" "$SSH_PORT"
+}
+
 multi_ip_config() {
   NOW="$(timestamp)"
   REPORT="/root/ssh-multi-ip-config-${NOW}.txt"
@@ -960,7 +584,7 @@ multi_ip_config() {
   
   # Get current configuration
   local current_port=$(get_current_ssh_port)
-  local current_allow=$(grep -E "^AllowUsers\s+" /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers\s*//' || echo "")
+  local current_allow=$(get_current_allow_users)
   
   echo "Current SSH port: $current_port"
   echo "Current AllowUsers: ${current_allow:-"(not set)"}"
@@ -1137,19 +761,3 @@ multi_ip_config() {
     echo "To rollback this change:"
     echo "  sudo cp $backup_file /etc/ssh/sshd_config"
     echo "  sudo systemctl restart $SSH_SERVICE"
-    echo
-  } > "$REPORT"
-  
-  echo
-  echo "SUCCESS: SSH multi-IP configuration applied!"
-  echo "==========================================="
-  echo "✓ Configuration validated and applied"
-  echo "✓ SSH service restarted successfully"
-  echo "✓ Report saved to: $REPORT"
-  echo
-  echo "IMPORTANT: Test your connection now from each location:"
-  echo "ssh -p $current_port $username@$(hostname -I | awk '{print $1}')"
-  echo
-}
-
-#
