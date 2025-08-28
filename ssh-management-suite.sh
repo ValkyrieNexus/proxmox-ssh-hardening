@@ -583,13 +583,13 @@ ClientAliveCountMax 2
         echo "ERROR: Failed to start SSH service" | tee -a "$REPORT"
       fi
       
-    else
-      echo "SSH config test failed!" | tee -a "$REPORT"
-      echo "Config errors:"
-      sshd -t
-      return 1
+      else
+        echo "SSH config test failed!" | tee -a "$REPORT"
+        echo "Config errors:"
+        sshd -t
+        return 1
+      fi
     fi
-  fi
   
   # Final report
   {
