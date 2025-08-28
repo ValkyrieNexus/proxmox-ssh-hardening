@@ -530,8 +530,7 @@ ClientAliveCountMax 2
   if ASK "Restart SSH service to apply changes?"; then
     if sshd -t 2>/dev/null; then
       echo "SSH config test: PASSED" | tee -a "$REPORT"
-   
-      # Aggressive socket cleanup
+
       echo "Stopping SSH sockets..." | tee -a "$REPORT"
       for socket in ssh.socket sshd.socket; do
         systemctl stop "$socket" 2>/dev/null || true
@@ -539,15 +538,12 @@ ClientAliveCountMax 2
         systemctl mask "$socket" 2>/dev/null || true
         echo "Disabled $socket" | tee -a "$REPORT"
       done
-    
-      # Stop and restart SSH service
+
       systemctl stop "$SSH_SERVICE" 2>/dev/null || true
       sleep 3
-    
+
       if systemctl start "$SSH_SERVICE" 2>/dev/null; then
         echo "SSH service started" | tee -a "$REPORT"
-      
-        # Verify port binding
         sleep 3
         if netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd" || \
            ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd"; then
@@ -558,38 +554,14 @@ ClientAliveCountMax 2
       else
         echo "ERROR: Failed to start SSH service" | tee -a "$REPORT"
       fi
-  
+
     else
       echo "SSH config test failed!" | tee -a "$REPORT"
       echo "Config errors:"
       sshd -t
-      return 1
+      return 1   # <— fail the function, not the script
     fi
-  fi  
-      # Start service
-      sleep 2
-      if systemctl start "$SSH_SERVICE" 2>/dev/null; then
-        echo "SSH service started" | tee -a "$REPORT"
-        
-        # Wait and check port
-        sleep 3
-        if netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd" || \
-           ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd"; then
-          echo "SUCCESS: SSH listening on port $SSH_PORT" | tee -a "$REPORT"
-        else
-          echo "WARNING: Could not verify SSH is on port $SSH_PORT" | tee -a "$REPORT"
-        fi
-      else
-        echo "ERROR: Failed to start SSH service" | tee -a "$REPORT"
-      fi
-      
-      else
-        echo "SSH config test failed!" | tee -a "$REPORT"
-        echo "Config errors:"
-        sshd -t
-        return 1
-      fi
-    fi
+  fi
   
   # Final report
   {
