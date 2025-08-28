@@ -266,53 +266,54 @@ force_ssh_restart() {
   }
   [[ -z "$SSH_SERVICE" ]] && SSH_SERVICE="$(detect_ssh_service)"
   
-  echo "Force restarting SSH service..." | tee -a "$REPORT"
+  echo "Restarting SSH service..." | tee -a "$REPORT"
   
-  if systemctl is-active "$SSH_SERVICE" >/dev/null 2>&1; then
-    systemctl stop "$SSH_SERVICE" 2>/dev/null || true
+  # First test the config
+  if ! sshd -t 2>/dev/null; then
+    echo "SSH config test failed before restart!" | tee -a "$REPORT"
+    echo "Config errors:" | tee -a "$REPORT"
+    sshd -t 2>&1 | tee -a "$REPORT"
+    return 1
   fi
   
-  handle_ssh_sockets "disable"
+  # Stop service normally first
+  systemctl stop "$SSH_SERVICE" 2>/dev/null || true
   sleep 2
   
-  if pgrep -f "sshd" >/dev/null 2>&1; then
-    echo "Stopping remaining SSH processes..."
-    pkill -f "sshd.*-D" 2>/dev/null || true
-    sleep 2
-  fi
+  # Only disable sockets if they exist and are active
+  for socket in ssh.socket sshd.socket; do
+    if systemctl is-active "$socket" >/dev/null 2>&1; then
+      echo "Stopping active socket: $socket" | tee -a "$REPORT"
+      systemctl stop "$socket" 2>/dev/null || true
+      systemctl disable "$socket" 2>/dev/null || true
+      systemctl mask "$socket" 2>/dev/null || true
+      [[ -n "$ROLLBACK" ]] && echo "systemctl unmask $socket && systemctl enable $socket" >> "$ROLLBACK"
+    fi
+  done
   
-  if ! safe_execute 10 sshd -t; then
-    echo "SSH config test failed! Aborting restart." | tee -a "$REPORT"
-    return 1
-  fi
-  
-  if ! systemctl start "$SSH_SERVICE" 2>/dev/null; then
+  # Clean restart
+  systemctl start "$SSH_SERVICE" 2>/dev/null || {
     echo "Failed to start SSH service" | tee -a "$REPORT"
     return 1
-  fi
+  }
   
   sleep 3
   
-  if ! verify_ssh_port "$expected_port"; then
-    echo "Port verification failed. Attempting fix..." | tee -a "$REPORT"
-    
-    local temp_config="/tmp/sshd_config_fix.$$"
-    {
-      echo "Port $expected_port"
-      grep -v "^Port " /etc/ssh/sshd_config 2>/dev/null || echo ""
-    } > "$temp_config"
-    
-    if [[ -s "$temp_config" ]] && safe_execute 10 sshd -t -f "$temp_config"; then
-      cp "$temp_config" /etc/ssh/sshd_config && \
-      systemctl restart "$SSH_SERVICE" 2>/dev/null && \
-      sleep 3 && \
-      verify_ssh_port "$expected_port"
-    else
-      echo "Configuration fix failed" | tee -a "$REPORT"
+  # Verify port binding
+  local attempts=0
+  while [[ $attempts -lt 10 ]]; do
+    if netstat -tlnp 2>/dev/null | grep -q ":${expected_port}.*sshd" || \
+       ss -tlnp 2>/dev/null | grep -q ":${expected_port}.*sshd"; then
+      echo "SUCCESS: SSH is listening on port $expected_port" | tee -a "$REPORT"
+      return 0
     fi
-    
-    [[ -f "$temp_config" ]] && rm -f "$temp_config"
-  fi
+    echo "Waiting for SSH to bind to port $expected_port..." | tee -a "$REPORT"
+    sleep 2
+    ((attempts++))
+  done
+  
+  echo "WARNING: SSH may not be listening on port $expected_port" | tee -a "$REPORT"
+  return 1
 }
 
 #=============================================================================
@@ -521,11 +522,46 @@ ClientAliveCountMax 2
   
   # Restart SSH service
   if ASK "Restart SSH service to apply changes?"; then
-    if sshd -t; then
+    if sshd -t 2>/dev/null; then
       echo "SSH config test: PASSED" | tee -a "$REPORT"
-      force_ssh_restart "$SSH_PORT"
+      
+      # Simple restart approach
+      echo "Restarting SSH service..." | tee -a "$REPORT"
+      
+      # Stop service
+      systemctl stop "$SSH_SERVICE" 2>/dev/null || true
+      
+      # Only disable sockets if they're actually active
+      for socket in ssh.socket sshd.socket; do
+        if systemctl is-active "$socket" >/dev/null 2>&1; then
+          echo "Disabling active socket: $socket" | tee -a "$REPORT"
+          systemctl stop "$socket" 2>/dev/null || true
+          systemctl mask "$socket" 2>/dev/null || true
+          [[ -f "$ROLLBACK" ]] && echo "systemctl unmask $socket" >> "$ROLLBACK"
+        fi
+      done
+      
+      # Start service
+      sleep 2
+      if systemctl start "$SSH_SERVICE" 2>/dev/null; then
+        echo "SSH service started" | tee -a "$REPORT"
+        
+        # Wait and check port
+        sleep 3
+        if netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd" || \
+           ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd"; then
+          echo "SUCCESS: SSH listening on port $SSH_PORT" | tee -a "$REPORT"
+        else
+          echo "WARNING: Could not verify SSH is on port $SSH_PORT" | tee -a "$REPORT"
+        fi
+      else
+        echo "ERROR: Failed to start SSH service" | tee -a "$REPORT"
+      fi
+      
     else
       echo "SSH config test failed!" | tee -a "$REPORT"
+      echo "Config errors:"
+      sshd -t
       return 1
     fi
   fi
