@@ -509,7 +509,6 @@ ${allow_users}
 MaxAuthTries 3
 MaxSessions 2
 LoginGraceTime 30
-Protocol 2
 X11Forwarding no
 AllowAgentForwarding no
 AllowTcpForwarding no
