@@ -44,6 +44,23 @@ ASK() {
   done
 }
 
+safe_execute() {
+  local timeout_val="$1"
+  shift
+  local cmd=("$@")
+
+  # Temporarily relax -e so failures don't kill the script here.
+  set +e
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_val" "${cmd[@]}" 2>/dev/null
+  else
+    "${cmd[@]}" 2>/dev/null
+  fi
+  local rc=$?
+  set -e
+  return "$rc"
+}
+
 #=============================================================================
 # SSH SERVICE FUNCTIONS
 #=============================================================================
@@ -796,15 +813,11 @@ handle_rollback() {
           
           if safe_execute 10 systemctl restart "$SSH_SERVICE"; then
             echo "Restored SSH config from $backup"
-            # optional: reuse your listener check
-            # verify_ssh_port "$SSH_PORT" || echo "WARN: Port verification inconclusive" | tee -a "$REPORT"
             return
           else
             echo "ERROR: Failed to restart SSH service after restore" | tee -a "$REPORT"
             return 1
           fi
-          systemctl restart "$SSH_SERVICE"
-          echo "Restored SSH config from $backup"
           return
         fi
       done
@@ -898,7 +911,7 @@ run_validation() {
   echo "Test 4/8: Socket Activation Conflicts"  
   local sockets_active=false
   for socket in ssh.socket sshd.socket; do
-    if systemctl list-unit-files 2>/dev/null | grep -q "^${socket}" && \
+    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -Fxq "$socket" && \
        safe_execute 3 systemctl is-active "$socket" >/dev/null; then
       echo "[WARN] $socket is active (may override port config)"
       sockets_active=true
@@ -943,7 +956,9 @@ run_validation() {
   echo "Test 7/8: User Access Restrictions"
   if [[ -f /etc/ssh/sshd_config ]]; then
     if grep -q "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null; then
-      local allowed_users=$(grep "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers\s*//')
+      local allowed_users
+      allowed_users="$(grep -m1 '^AllowUsers' /etc/ssh/sshd_config 2>/dev/null \
+        | sed -E 's/^AllowUsers[[:space:]]*//' || true)"
       echo "[PASS] User access restrictions configured"
       echo "AllowUsers: $allowed_users"
       ((tests_passed++))
