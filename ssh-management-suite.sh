@@ -520,27 +520,52 @@ ClientAliveCountMax 2
     install_file_with_backup "/etc/ssh/sshd_config" "$ssh_config"
   fi
   
+  # Create required SSH directories
+  if [[ ! -d /run/sshd ]]; then
+    mkdir -p /run/sshd
+    chmod 755 /run/sshd
+    echo "Created SSH privilege separation directory" | tee -a "$REPORT"
+
   # Restart SSH service
   if ASK "Restart SSH service to apply changes?"; then
     if sshd -t 2>/dev/null; then
       echo "SSH config test: PASSED" | tee -a "$REPORT"
-      
-      # Simple restart approach
-      echo "Restarting SSH service..." | tee -a "$REPORT"
-      
-      # Stop service
-      systemctl stop "$SSH_SERVICE" 2>/dev/null || true
-      
-      # Only disable sockets if they're actually active
+   
+      # Aggressive socket cleanup
+      echo "Stopping SSH sockets..." | tee -a "$REPORT"
       for socket in ssh.socket sshd.socket; do
-        if systemctl is-active "$socket" >/dev/null 2>&1; then
-          echo "Disabling active socket: $socket" | tee -a "$REPORT"
-          systemctl stop "$socket" 2>/dev/null || true
-          systemctl mask "$socket" 2>/dev/null || true
-          [[ -f "$ROLLBACK" ]] && echo "systemctl unmask $socket" >> "$ROLLBACK"
-        fi
+        systemctl stop "$socket" 2>/dev/null || true
+        systemctl disable "$socket" 2>/dev/null || true
+        systemctl mask "$socket" 2>/dev/null || true
+        echo "Disabled $socket" | tee -a "$REPORT"
       done
+    
+      # Stop and restart SSH service
+      systemctl stop "$SSH_SERVICE" 2>/dev/null || true
+      sleep 3
+    
+      if systemctl start "$SSH_SERVICE" 2>/dev/null; then
+        echo "SSH service started" | tee -a "$REPORT"
       
+        # Verify port binding
+        sleep 3
+        if netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd" || \
+           ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd"; then
+          echo "SUCCESS: SSH listening on port $SSH_PORT" | tee -a "$REPORT"
+        else
+          echo "WARNING: Could not verify SSH is on port $SSH_PORT" | tee -a "$REPORT"
+        fi
+      else
+        echo "ERROR: Failed to start SSH service" | tee -a "$REPORT"
+      fi
+  
+    else
+      echo "SSH config test failed!" | tee -a "$REPORT"
+      echo "Config errors:"
+      sshd -t
+      return 1
+    fi
+  fi  
       # Start service
       sleep 2
       if systemctl start "$SSH_SERVICE" 2>/dev/null; then
@@ -900,17 +925,16 @@ run_validation() {
   fi
   echo
   
-  # Test 7: User restrictions
+# Test 7/8: User Access Restrictions
   echo "Test 7/8: User Access Restrictions"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    local users
-    users=$(get_current_allow_users)
-    if [[ -n "$users" ]]; then
+    if grep -q "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null; then
+      local allowed_users=$(grep "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers\s*//')
       echo "[PASS] User access restrictions configured"
-      echo "AllowUsers: $users"
+      echo "AllowUsers: $allowed_users"
       ((tests_passed++))
     else
-      echo "[WARN] No user access restrictions (any user can attempt login)"
+      echo "[WARN] No user access restrictions"
     fi
   else
     echo "[FAIL] SSH config file not found"
