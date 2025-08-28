@@ -757,7 +757,7 @@ run_validation() {
   # Test 1: SSH config syntax
   echo "Test 1/8: SSH Configuration Syntax"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    if safe_execute 10 sshd -t; then
+    if timeout 5 bash -c 'sshd -t' 2>/dev/null; then
       echo "[PASS] SSH config syntax valid"
       ((tests_passed++))
     else
@@ -771,7 +771,7 @@ run_validation() {
   # Test 2: SSH service status  
   echo "Test 2/8: SSH Service Status"
   local service_active=false
-  if safe_execute 5 systemctl is-active "$SSH_SERVICE" >/dev/null; then
+  service_status=$(systemctl is-active "$SSH_SERVICE" 2>/dev/null || echo "inactive") if [[ "$service_status" == "active" ]]; then
     echo "[PASS] SSH service ($SSH_SERVICE) is running"
     ((tests_passed++))
     service_active=true
