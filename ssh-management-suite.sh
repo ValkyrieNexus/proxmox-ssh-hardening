@@ -206,9 +206,9 @@ handle_ssh_sockets() {
     "disable")
       echo "Disabling SSH socket services..." | tee -a "$REPORT"
       for socket in "${sockets[@]}"; do
-        if systemctl list-unit-files 2>/dev/null \ | awk '{print $1}' | grep -Fxq "$socket"; then
-         local was_enabled="no"
-         local was_masked="no"
+        if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -Fxq "$socket"; then
+          local was_enabled="no"
+          local was_masked="no"
           systemctl is-enabled "$socket" >/dev/null 2>&1 && was_enabled="yes"
           systemctl is-masked  "$socket" >/dev/null 2>&1 && was_masked="yes"
       
@@ -224,6 +224,7 @@ handle_ssh_sockets() {
                 echo "systemctl unmask $socket && systemctl enable $socket || true" >> "$ROLLBACK"
               else
                 echo "systemctl unmask $socket && systemctl disable $socket || true" >> "$ROLLBACK"
+              fi
             fi
           fi
         fi
@@ -792,6 +793,16 @@ handle_rollback() {
           cp "$backup" /etc/ssh/sshd_config
           SSH_SERVICE="$(detect_ssh_service)"
           handle_ssh_sockets "disable"
+          
+          if safe_execute 10 systemctl restart "$SSH_SERVICE"; then
+            echo "Restored SSH config from $backup"
+            # optional: reuse your listener check
+            # verify_ssh_port "$SSH_PORT" || echo "WARN: Port verification inconclusive" | tee -a "$REPORT"
+            return
+          else
+            echo "ERROR: Failed to restart SSH service after restore" | tee -a "$REPORT"
+            return 1
+          fi
           systemctl restart "$SSH_SERVICE"
           echo "Restored SSH config from $backup"
           return
