@@ -59,7 +59,7 @@ detect_ssh_service() {
 get_current_ssh_port() {
   local port=""
   if [[ -f /etc/ssh/sshd_config ]]; then
-    port=$(grep -E "^Port\s+" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -1)
+    port="$(grep -m1 -E '^Port[[:space:]]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || true)"
   fi
   echo "${port:-22}"
 }
@@ -67,10 +67,11 @@ get_current_ssh_port() {
 get_current_allow_users() {
   local users=""
   if [[ -f /etc/ssh/sshd_config ]]; then
-    users=$(grep -E "^AllowUsers\s+" /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers\s*//' | head -1)
+    users="$(grep -m1 -E '^AllowUsers[[:space:]]+' /etc/ssh/sshd_config 2>/dev/null | sed 's/^AllowUsers[[:space:]]*//' || true)"
   fi
   echo "$users"
 }
+
 
 #=============================================================================
 # UTILITY FUNCTIONS
@@ -205,12 +206,26 @@ handle_ssh_sockets() {
     "disable")
       echo "Disabling SSH socket services..." | tee -a "$REPORT"
       for socket in "${sockets[@]}"; do
-        if systemctl list-unit-files 2>/dev/null | grep -q "^${socket}"; then
-          echo "Processing $socket..." | tee -a "$REPORT"
+        if systemctl list-unit-files 2>/dev/null \ | awk '{print $1}' | grep -Fxq "$socket"; then
+         local was_enabled="no"
+         local was_masked="no"
+          systemctl is-enabled "$socket" >/dev/null 2>&1 && was_enabled="yes"
+          systemctl is-masked  "$socket" >/dev/null 2>&1 && was_masked="yes"
+      
           systemctl stop "$socket" 2>/dev/null || true
-          systemctl disable "$socket" 2>/dev/null || true  
+          systemctl disable "$socket" 2>/dev/null || true
           systemctl mask "$socket" 2>/dev/null || true
-          [[ -n "$ROLLBACK" ]] && echo "systemctl unmask $socket && systemctl enable $socket" >> "$ROLLBACK"
+      
+          if [[ -n "$ROLLBACK" ]]; then
+            if [[ "$was_masked" == "yes" ]]; then
+              echo "systemctl mask $socket || true" >> "$ROLLBACK"
+            else
+              if [[ "$was_enabled" == "yes" ]]; then
+                echo "systemctl unmask $socket && systemctl enable $socket || true" >> "$ROLLBACK"
+              else
+                echo "systemctl unmask $socket && systemctl disable $socket || true" >> "$ROLLBACK"
+            fi
+          fi
         fi
       done
       ;;
@@ -422,7 +437,8 @@ ssh_hardening_main() {
     local admin_pass
     admin_pass="$(random_pass)"
     if [[ -n "$admin_pass" ]] && echo "$ADMIN:$admin_pass" | chpasswd 2>/dev/null; then
-      echo "Admin credentials: $ADMIN / $admin_pass" >> "$REPORT"
+      echo "Admin password set for $ADMIN (displaying once): $admin_pass"
+      echo "NOTE: Password NOT written to the report for security."
     else
       echo "WARNING: Failed to set password" | tee -a "$REPORT"
     fi
@@ -474,7 +490,10 @@ ssh_hardening_main() {
   if [[ "$has_keys" == true ]] && ASK "Install public keys to ~$ADMIN/.ssh/authorized_keys?"; then
     su - "$ADMIN" -s /bin/bash -c 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys'
     
-    local admin_auth_keys="/home/$ADMIN/.ssh/authorized_keys"
+    local admin_home
+    admin_home="$(getent passwd "$ADMIN" | cut -d: -f6)"
+    local admin_auth_keys="$admin_home/.ssh/authorized_keys"
+    
     if [[ -s "$admin_auth_keys" ]]; then
       backup_file "$admin_auth_keys"
     fi
@@ -484,7 +503,7 @@ ssh_hardening_main() {
     
     chown "$ADMIN:$ADMIN" "$admin_auth_keys"
     chmod 600 "$admin_auth_keys"
-    chmod 700 "/home/$ADMIN/.ssh"
+    chmod 700 "$admin_home/.ssh"
     
     echo "$admin_auth_keys" >> "$CHANGED_INDEX"
   fi
@@ -524,31 +543,38 @@ ClientAliveCountMax 2
     mkdir -p /run/sshd
     chmod 755 /run/sshd
     echo "Created SSH privilege separation directory" | tee -a "$REPORT"
-
+  fi
+  
   # Restart SSH service
   if ASK "Restart SSH service to apply changes?"; then
     if sshd -t 2>/dev/null; then
       echo "SSH config test: PASSED" | tee -a "$REPORT"
 
-      echo "Stopping SSH sockets..." | tee -a "$REPORT"
-      for socket in ssh.socket sshd.socket; do
-        systemctl stop "$socket" 2>/dev/null || true
-        systemctl disable "$socket" 2>/dev/null || true
-        systemctl mask "$socket" 2>/dev/null || true
-        echo "Disabled $socket" | tee -a "$REPORT"
-      done
-
+  echo "Stopping SSH sockets..." | tee -a "$REPORT"
+  for socket in ssh.socket sshd.socket; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${socket}"; then
+      systemctl stop "$socket" 2>/dev/null || true
+      systemctl disable "$socket" 2>/dev/null || true
+      # Only mask if you truly want to prevent socket activation
+      systemctl mask "$socket" 2>/dev/null && \
+        echo "Masked $socket" | tee -a "$REPORT" || \
+        echo "Skipped masking $socket (not present or failed)" | tee -a "$REPORT"
+    else
+      echo "Socket unit $socket not present" | tee -a "$REPORT"
+    fi
+  done
+  
       systemctl stop "$SSH_SERVICE" 2>/dev/null || true
       sleep 3
 
       if systemctl start "$SSH_SERVICE" 2>/dev/null; then
         echo "SSH service started" | tee -a "$REPORT"
         sleep 3
-        if netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd" || \
-           ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT}.*sshd"; then
-          echo "SUCCESS: SSH listening on port $SSH_PORT" | tee -a "$REPORT"
+        if ss -tln 2>/dev/null | awk '{print $4}' | grep -qE ":(^|.*)${SSH_PORT}$" || \
+           netstat -tln 2>/dev/null | awk '{print $4}' | grep -qE ":(^|.*)${SSH_PORT}$"; then
+          echo "SUCCESS: Port $SSH_PORT is listening" | tee -a "$REPORT"
         else
-          echo "WARNING: Could not verify SSH is on port $SSH_PORT" | tee -a "$REPORT"
+          echo "WARNING: Could not verify listener on $SSH_PORT" | tee -a "$REPORT"
         fi
       else
         echo "ERROR: Failed to start SSH service" | tee -a "$REPORT"
@@ -654,8 +680,14 @@ multi_ip_config() {
     
     SSH_SERVICE="$(detect_ssh_service)"
     handle_ssh_sockets "disable"
-    systemctl restart "$SSH_SERVICE"
     
+    if safe_execute 10 systemctl restart "$SSH_SERVICE"; then
+      echo "SSH service restarted" | tee -a "$REPORT"
+    else
+      echo "ERROR: Failed to restart SSH service" | tee -a "$REPORT"
+      return 1
+    fi
+
     rm -f "$temp_config"
     echo "Multi-IP configuration applied! Backup: $backup_file"
   else
@@ -705,7 +737,7 @@ display_ssh_keys() {
       cat "$key_info"
       echo
       echo "Private key files:"
-      find "$keys_dir" -name "*_ed25519" -o -name "*_rsa4096" 2>/dev/null | head -10 || echo "No private keys found"
+      find "$keys_dir" \( -name "*_ed25519" -o -name "*_rsa4096" \) 2>/dev/null | head -10 || echo "No private keys found"
     else
       echo "Key information not found for session $session"
     fi
