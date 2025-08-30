@@ -837,6 +837,10 @@ handle_rollback() {
 # This replaces the run_validation() function in your script
 
 run_validation() {
+  # Temporarily disable strict error handling for this function
+  local old_opts=$-
+  set +e  # Disable exit on error for validation
+  
   echo "SSH Configuration Validation"
   echo "============================"
   echo
@@ -849,10 +853,10 @@ run_validation() {
   # Test 1: SSH config syntax
   echo "Test 1/8: SSH Configuration Syntax"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    # Use a subshell to prevent script exit on failure
-    if (sshd -t 2>/dev/null); then
+    sshd -t >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
       echo "[PASS] SSH config syntax valid"
-      ((tests_passed++))
+      tests_passed=$((tests_passed + 1))
     else
       echo "[FAIL] SSH config syntax invalid"
     fi
@@ -866,16 +870,16 @@ run_validation() {
   local service_active=false
   
   # Check if service exists first, then check if active
-  if systemctl list-unit-files 2>/dev/null | grep -q "^${SSH_SERVICE}\.service"; then
-    # Use || true to prevent exit on non-zero return
-    local service_status
-    service_status=$(systemctl is-active "$SSH_SERVICE" 2>/dev/null || echo "inactive")
-    
-    if [[ "$service_status" == "active" ]]; then
+  systemctl list-unit-files 2>/dev/null | grep -q "^${SSH_SERVICE}\.service"
+  if [[ $? -eq 0 ]]; then
+    systemctl is-active "$SSH_SERVICE" >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
       echo "[PASS] SSH service ($SSH_SERVICE) is running"
-      ((tests_passed++))
+      tests_passed=$((tests_passed + 1))
       service_active=true
     else
+      local service_status
+      service_status=$(systemctl is-active "$SSH_SERVICE" 2>/dev/null || echo "inactive")
       echo "[WARN] SSH service ($SSH_SERVICE) is $service_status"
     fi
   else
@@ -894,27 +898,30 @@ run_validation() {
     
     # Check with netstat
     if command -v netstat >/dev/null 2>&1; then
-      if (netstat -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"); then
+      netstat -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"
+      if [[ $? -eq 0 ]]; then
         echo "[PASS] SSH listening on port $configured_port (netstat)"
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
         port_found=true
       fi
     fi
     
     # Check with ss if netstat didn't find it
     if [[ "$port_found" == false ]] && command -v ss >/dev/null 2>&1; then
-      if (ss -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"); then
+      ss -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"
+      if [[ $? -eq 0 ]]; then
         echo "[PASS] SSH listening on port $configured_port (ss)"
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
         port_found=true
       fi
     fi
     
     # Check with lsof as last resort
     if [[ "$port_found" == false ]] && command -v lsof >/dev/null 2>&1; then
-      if (lsof -i ":${configured_port}" 2>/dev/null | grep -q sshd); then
+      lsof -i ":${configured_port}" 2>/dev/null | grep -q sshd
+      if [[ $? -eq 0 ]]; then
         echo "[PASS] SSH listening on port $configured_port (lsof)"
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
         port_found=true
       fi
     fi
@@ -931,11 +938,10 @@ run_validation() {
   echo "Test 4/8: Socket Activation Conflicts"  
   local sockets_active=false
   for socket in ssh.socket sshd.socket; do
-    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -Fxq "$socket"; then
-      local socket_status
-      socket_status=$(systemctl is-active "$socket" 2>/dev/null || echo "inactive")
-      
-      if [[ "$socket_status" == "active" ]]; then
+    systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -Fxq "$socket"
+    if [[ $? -eq 0 ]]; then
+      systemctl is-active "$socket" >/dev/null 2>&1
+      if [[ $? -eq 0 ]]; then
         echo "[WARN] $socket is active (may override port config)"
         sockets_active=true
       fi
@@ -944,16 +950,17 @@ run_validation() {
   
   if [[ "$sockets_active" == false ]]; then
     echo "[PASS] No conflicting SSH sockets active"
-    ((tests_passed++))
+    tests_passed=$((tests_passed + 1))
   fi
   echo
   
   # Test 5: Root login
   echo "Test 5/8: Root Login Security"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    if grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null; then
+    grep -q "^PermitRootLogin no" /etc/ssh/sshd_config 2>/dev/null
+    if [[ $? -eq 0 ]]; then
       echo "[PASS] Root login disabled"
-      ((tests_passed++))
+      tests_passed=$((tests_passed + 1))
     else
       echo "[WARN] Root login not explicitly disabled"
     fi
@@ -965,9 +972,10 @@ run_validation() {
   # Test 6: Password authentication
   echo "Test 6/8: Password Authentication"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    if grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
+    grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null
+    if [[ $? -eq 0 ]]; then
       echo "[PASS] Password authentication disabled"
-      ((tests_passed++))
+      tests_passed=$((tests_passed + 1))
     else
       echo "[WARN] Password authentication not disabled"  
     fi
@@ -979,14 +987,15 @@ run_validation() {
   # Test 7: User Access Restrictions
   echo "Test 7/8: User Access Restrictions"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    if grep -q "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null; then
+    grep -q "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null
+    if [[ $? -eq 0 ]]; then
       local allowed_users
       allowed_users="$(grep -m1 '^AllowUsers' /etc/ssh/sshd_config 2>/dev/null | sed -E 's/^AllowUsers[[:space:]]*//' || echo "")"
       echo "[PASS] User access restrictions configured"
       if [[ -n "$allowed_users" ]]; then
         echo "AllowUsers: $allowed_users"
       fi
-      ((tests_passed++))
+      tests_passed=$((tests_passed + 1))
     else
       echo "[WARN] No user access restrictions"
     fi
@@ -998,14 +1007,16 @@ run_validation() {
   # Test 8: Key authentication
   echo "Test 8/8: Public Key Authentication"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    if grep -q "^PubkeyAuthentication yes" /etc/ssh/sshd_config 2>/dev/null; then
+    grep -q "^PubkeyAuthentication yes" /etc/ssh/sshd_config 2>/dev/null
+    if [[ $? -eq 0 ]]; then
       echo "[PASS] Public key authentication enabled"
-      ((tests_passed++))
+      tests_passed=$((tests_passed + 1))
     else
       # Check if it's not explicitly disabled (yes is default)
-      if ! grep -q "^PubkeyAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
+      grep -q "^PubkeyAuthentication no" /etc/ssh/sshd_config 2>/dev/null
+      if [[ $? -ne 0 ]]; then
         echo "[PASS] Public key authentication enabled (default)"
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
       else
         echo "[FAIL] Public key authentication disabled"
       fi
@@ -1031,7 +1042,7 @@ run_validation() {
   fi
   
   # Connection test info
-  if [[ $tests_passed -ge 4 && -f /etc/ssh/sshd_config ]]; then
+  if [[ $tests_passed -ge 4 ]] && [[ -f /etc/ssh/sshd_config ]]; then
     echo
     echo "Connection Test Command:"
     local users
@@ -1054,7 +1065,12 @@ run_validation() {
     fi
   fi
   
-  return 0  # Always return success to prevent script exit
+  # Restore original shell options
+  if [[ "$old_opts" == *e* ]]; then
+    set -e
+  fi
+  
+  return 0  # Always return success
 }
 #=============================================================================
 # MENU AND MAIN FUNCTION
