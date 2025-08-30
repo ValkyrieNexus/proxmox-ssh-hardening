@@ -832,6 +832,10 @@ handle_rollback() {
 # VALIDATION FUNCTION (FIXED)
 #=============================================================================
 
+#!/usr/bin/env bash
+# Fixed validation function for SSH Management Suite
+# This replaces the run_validation() function in your script
+
 run_validation() {
   echo "SSH Configuration Validation"
   echo "============================"
@@ -845,7 +849,8 @@ run_validation() {
   # Test 1: SSH config syntax
   echo "Test 1/8: SSH Configuration Syntax"
   if [[ -f /etc/ssh/sshd_config ]]; then
-    if safe_execute 10 sshd -t; then
+    # Use a subshell to prevent script exit on failure
+    if (sshd -t 2>/dev/null); then
       echo "[PASS] SSH config syntax valid"
       ((tests_passed++))
     else
@@ -859,10 +864,22 @@ run_validation() {
   # Test 2: SSH service status  
   echo "Test 2/8: SSH Service Status"
   local service_active=false
-  if safe_execute 5 systemctl is-active "$SSH_SERVICE" >/dev/null; then
-    echo "[PASS] SSH service ($SSH_SERVICE) is running"
-    ((tests_passed++))
-    service_active=true
+  
+  # Check if service exists first, then check if active
+  if systemctl list-unit-files 2>/dev/null | grep -q "^${SSH_SERVICE}\.service"; then
+    # Use || true to prevent exit on non-zero return
+    local service_status
+    service_status=$(systemctl is-active "$SSH_SERVICE" 2>/dev/null || echo "inactive")
+    
+    if [[ "$service_status" == "active" ]]; then
+      echo "[PASS] SSH service ($SSH_SERVICE) is running"
+      ((tests_passed++))
+      service_active=true
+    else
+      echo "[WARN] SSH service ($SSH_SERVICE) is $service_status"
+    fi
+  else
+    echo "[FAIL] SSH service ($SSH_SERVICE) not found"
   fi
   echo
   
@@ -875,24 +892,27 @@ run_validation() {
   if [[ "$service_active" == true ]]; then
     local port_found=false
     
+    # Check with netstat
     if command -v netstat >/dev/null 2>&1; then
-      if netstat -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"; then
+      if (netstat -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"); then
         echo "[PASS] SSH listening on port $configured_port (netstat)"
         ((tests_passed++))
         port_found=true
       fi
     fi
     
+    # Check with ss if netstat didn't find it
     if [[ "$port_found" == false ]] && command -v ss >/dev/null 2>&1; then
-      if ss -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"; then
+      if (ss -tlnp 2>/dev/null | grep -q ":${configured_port}.*sshd"); then
         echo "[PASS] SSH listening on port $configured_port (ss)"
         ((tests_passed++))
         port_found=true
       fi
     fi
     
+    # Check with lsof as last resort
     if [[ "$port_found" == false ]] && command -v lsof >/dev/null 2>&1; then
-      if lsof -i ":${configured_port}" 2>/dev/null | grep -q sshd; then
+      if (lsof -i ":${configured_port}" 2>/dev/null | grep -q sshd); then
         echo "[PASS] SSH listening on port $configured_port (lsof)"
         ((tests_passed++))
         port_found=true
@@ -911,10 +931,14 @@ run_validation() {
   echo "Test 4/8: Socket Activation Conflicts"  
   local sockets_active=false
   for socket in ssh.socket sshd.socket; do
-    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -Fxq "$socket" && \
-       safe_execute 3 systemctl is-active "$socket" >/dev/null; then
-      echo "[WARN] $socket is active (may override port config)"
-      sockets_active=true
+    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -Fxq "$socket"; then
+      local socket_status
+      socket_status=$(systemctl is-active "$socket" 2>/dev/null || echo "inactive")
+      
+      if [[ "$socket_status" == "active" ]]; then
+        echo "[WARN] $socket is active (may override port config)"
+        sockets_active=true
+      fi
     fi
   done
   
@@ -952,15 +976,16 @@ run_validation() {
   fi
   echo
   
-# Test 7/8: User Access Restrictions
+  # Test 7: User Access Restrictions
   echo "Test 7/8: User Access Restrictions"
   if [[ -f /etc/ssh/sshd_config ]]; then
     if grep -q "^AllowUsers" /etc/ssh/sshd_config 2>/dev/null; then
       local allowed_users
-      allowed_users="$(grep -m1 '^AllowUsers' /etc/ssh/sshd_config 2>/dev/null \
-        | sed -E 's/^AllowUsers[[:space:]]*//' || true)"
+      allowed_users="$(grep -m1 '^AllowUsers' /etc/ssh/sshd_config 2>/dev/null | sed -E 's/^AllowUsers[[:space:]]*//' || echo "")"
       echo "[PASS] User access restrictions configured"
-      echo "AllowUsers: $allowed_users"
+      if [[ -n "$allowed_users" ]]; then
+        echo "AllowUsers: $allowed_users"
+      fi
       ((tests_passed++))
     else
       echo "[WARN] No user access restrictions"
@@ -977,7 +1002,13 @@ run_validation() {
       echo "[PASS] Public key authentication enabled"
       ((tests_passed++))
     else
-      echo "[WARN] Public key authentication not explicitly enabled"
+      # Check if it's not explicitly disabled (yes is default)
+      if ! grep -q "^PubkeyAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
+        echo "[PASS] Public key authentication enabled (default)"
+        ((tests_passed++))
+      else
+        echo "[FAIL] Public key authentication disabled"
+      fi
     fi
   else
     echo "[FAIL] SSH config file not found"
@@ -1007,12 +1038,12 @@ run_validation() {
     users=$(get_current_allow_users)
     local admin_user=""
     if [[ -n "$users" ]]; then
-      admin_user=$(echo "$users" | awk '{print $1}' | cut -d'@' -f1 2>/dev/null)
+      admin_user=$(echo "$users" | awk '{print $1}' | cut -d'@' -f1 2>/dev/null || echo "")
     fi
     
     local host_ip=""
     if command -v hostname >/dev/null 2>&1; then
-      host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' 2>/dev/null)
+      host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' 2>/dev/null || echo "")
     fi
     host_ip="${host_ip:-your-server-ip}"
     
@@ -1022,8 +1053,9 @@ run_validation() {
       echo "ssh -p ${configured_port:-22} username@$host_ip"
     fi
   fi
+  
+  return 0  # Always return success to prevent script exit
 }
-
 #=============================================================================
 # MENU AND MAIN FUNCTION
 #=============================================================================
