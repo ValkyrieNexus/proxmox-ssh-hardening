@@ -128,18 +128,6 @@ validate_network() {
   fi
 }
 
-safe_execute() {
-  local timeout_val="$1"
-  shift
-  local cmd=("$@")
-  
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_val" "${cmd[@]}" 2>/dev/null
-  else
-    "${cmd[@]}" 2>/dev/null
-  fi
-}
-
 #=============================================================================
 # FILE MANAGEMENT FUNCTIONS
 #=============================================================================
