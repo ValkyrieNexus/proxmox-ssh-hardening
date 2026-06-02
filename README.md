@@ -1,12 +1,12 @@
 # SSH Management Suite
 
-**Unified SSH hardening, configuration management, and rollback system for Proxmox LXC containers and VMs running Debian/Ubuntu.**
+Unified SSH hardening, configuration management, and rollback system for Proxmox LXC containers and VMs running Debian/Ubuntu.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
 [![Platform](https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-blue.svg)](https://www.debian.org/)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### One-Line Installation (Recommended)
 ```bash
@@ -29,7 +29,7 @@ less ssh-management-suite.sh
 sudo ./ssh-management-suite.sh
 ```
 
-## 📋 SSH Management Suite Features
+## SSH Management Suite Features
 
 When you run the suite, you'll see this main menu:
 
@@ -47,68 +47,68 @@ Current SSH Port: 22
 ```
 
 ### Option 1: Harden SSH (New Installation)
-- **Complete SSH security hardening** for fresh systems
-- **Encrypted key generation** (Ed25519 + RSA-4096)
-- **Automatic user creation** with sudo privileges
-- **Port configuration** (default: 2222)
-- **Network access restrictions** (optional)
-- **Socket activation handling** (fixes port binding issues)
+- SSH security hardening for fresh systems
+- Encrypted key generation (Ed25519 + RSA-4096)
+- Automatic user creation with sudo privileges
+- Port configuration (default: 2222)
+- Network access restrictions (optional)
+- Socket activation handling (fixes port binding issues)
 
 ### Option 2: Configure Multi-IP Access
-- **Perfect for multi-location setups** (office + home networks)
-- **CIDR subnet support** (`192.168.1.0/24`)
-- **Specific IP addresses** (`10.0.0.100`)
-- **Hostname support** for dynamic IPs
-- **Input validation** and configuration testing
+- Multi-location setups (office + home networks)
+- CIDR subnet support (`192.168.1.0/24`)
+- Specific IP addresses (`10.0.0.100`)
+- Hostname support for dynamic IPs
+- Input validation and configuration testing
 
 ### Option 3: Manage/Rollback Previous Sessions
-- **Session discovery** (finds all previous hardening)
-- **Interactive rollback** with detailed session info
-- **Automated rollback scripts** + manual restoration
-- **Safe restoration** with configuration testing
+- Session discovery (finds all previous hardening)
+- Interactive rollback with detailed session info
+- Automated rollback scripts plus manual restoration
+- Safe restoration with configuration testing
 
 ### Option 4: Validate Current Configuration
-- **Comprehensive testing** of SSH security settings
-- **Port binding verification** 
-- **Service status checking**
-- **Key file validation**
-- **Security audit** with detailed reporting
+- Tests of SSH security settings
+- Port binding verification
+- Service status checking
+- Key file validation
+- Security audit with detailed reporting
 
-## 🔐 Security Features
+## Security Features
 
-### 🛡️ **SSH Hardening (`ssh-hardening.sh`)**
-- ✅ **Disable root login** and password authentication
-- ✅ **Change SSH port** (default: 2222, customizable)
-- ✅ **Strong encryption algorithms** (Ed25519, modern ciphers)
-- ✅ **Connection limits** (MaxAuthTries, MaxSessions, timeouts)
-- ✅ **User access restrictions** via AllowUsers directive
+### SSH Hardening (`ssh-hardening.sh`)
+- Disable root login and password authentication
+- Change SSH port (default: 2222, customizable)
+- Strong encryption algorithms (Ed25519, modern ciphers)
+- Connection limits (MaxAuthTries, MaxSessions, timeouts)
+- User access restrictions via AllowUsers directive
 
-### 🔑 **Key Management**
-- ✅ **Encrypted Ed25519 keys** (recommended, quantum-resistant)
-- ✅ **RSA-4096 keys** (legacy compatibility)
-- ✅ **Strong random passphrases** (32-character entropy)
-- ✅ **Automatic key installation** to authorized_keys
-- ✅ **Proper file permissions** (600 for private keys)
+### Key Management
+- Encrypted Ed25519 keys (recommended, quantum-resistant)
+- RSA-4096 keys (legacy compatibility)
+- Strong random passphrases (32-character entropy)
+- Automatic key installation to authorized_keys
+- Proper file permissions (600 for private keys)
 
-### 🌐 **Multi-Network Support**
-- ✅ **CIDR notation** for subnets (`192.168.1.0/24`)
-- ✅ **Specific IP addresses** (`10.0.0.100`)
-- ✅ **Hostname support** for dynamic IPs
-- ✅ **Multiple location access** (office, home, VPN)
+### Multi-Network Support
+- CIDR notation for subnets (`192.168.1.0/24`)
+- Specific IP addresses (`10.0.0.100`)
+- Hostname support for dynamic IPs
+- Multiple location access (office, home, VPN)
 
-### 🔄 **Safety & Recovery**
-- ✅ **Automatic backups** of all modified files
-- ✅ **Rollback scripts** generated for emergency recovery
-- ✅ **Configuration validation** before applying changes
-- ✅ **Service testing** before restart
+### Safety & Recovery
+- Automatic backups of all modified files
+- Rollback scripts generated for emergency recovery
+- Configuration validation before applying changes
+- Service testing before restart
 
-## 📖 Step-by-Step Usage Guide
+## Step-by-Step Usage Guide
 
 ### Prerequisites
 - Debian 10+, Ubuntu 18.04+, or Proxmox LXC/VM
 - Root access (sudo privileges)
 - Active internet connection
-- **Proxmox console access** (critical for recovery)
+- Proxmox console access (critical for recovery)
 
 ### Step 1: Launch SSH Management Suite
 
@@ -158,18 +158,18 @@ Current SSH Port: 22
 
 ### Step 3A: Initial SSH Hardening (Option 1)
 
-**For fresh LXC/VM installations:**
+For fresh LXC/VM installations:
 
-1. **Select Option 1** from the main menu
-2. **Configure settings** when prompted:
+1. Select Option 1 from the main menu
+2. Configure settings when prompted:
    - Admin username (default: `admin`)
    - SSH port (default: `2222`)
    - Network restrictions (optional: `192.168.1.0/24`)
-3. **Key generation** (recommended: both Ed25519 + RSA-4096)
-4. **Apply hardening** (disables root login, passwords, etc.)
-5. **Service restart** (handles socket activation automatically)
+3. Key generation (recommended: both Ed25519 + RSA-4096)
+4. Apply hardening (disables root login, passwords, etc.)
+5. Service restart (handles socket activation automatically)
 
-**Critical: Test connection immediately:**
+Test the connection immediately:
 ```bash
 # The script provides exact command like:
 ssh -i /root/ssh-generated-keys-TIMESTAMP/admin_ed25519 -p 2222 admin@your-server-ip
@@ -177,38 +177,38 @@ ssh -i /root/ssh-generated-keys-TIMESTAMP/admin_ed25519 -p 2222 admin@your-serve
 
 ### Step 3B: Multi-IP Configuration (Option 2)
 
-**Perfect for MacBook users with office/home access:**
+For users with office/home access:
 
-1. **Select Option 2** from the main menu
-2. **Enter your username** (must exist on system)
-3. **Add network ranges** one by one:
+1. Select Option 2 from the main menu
+2. Enter your username (must exist on system)
+3. Add network ranges one by one:
    ```
    Enter network/IP (empty to finish): 10.0.0.0/8        # Office/Teleport
    Enter network/IP (empty to finish): 192.168.1.0/24    # Home network 1
    Enter network/IP (empty to finish): 192.168.50.0/24   # Home network 2
    Enter network/IP (empty to finish): [press Enter]
    ```
-4. **Review and apply** the configuration
-5. **Test connections** from each location
+4. Review and apply the configuration
+5. Test connections from each location
 
 ### Step 3C: Rollback Management (Option 3)
 
-**If you need to undo changes:**
+If you need to undo changes:
 
-1. **Select Option 3** from the main menu
-2. **View available sessions** (automatically discovered)
-3. **Choose a session** to examine details
-4. **Execute rollback** (automated script + manual options)
-5. **Verify restoration** (automatic SSH service restart)
+1. Select Option 3 from the main menu
+2. View available sessions (automatically discovered)
+3. Choose a session to examine details
+4. Execute rollback (automated script + manual options)
+5. Verify restoration (automatic SSH service restart)
 
 ### Step 3D: Configuration Validation (Option 4)
 
-**To verify your SSH security:**
+To verify your SSH security:
 
-1. **Select Option 4** from the main menu
-2. **Review test results** (port binding, security settings, etc.)
-3. **Check recommendations** for any failed tests
-4. **Get connection examples** for your current setup
+1. Select Option 4 from the main menu
+2. Review test results (port binding, security settings, etc.)
+3. Check recommendations for any failed tests
+4. Get connection examples for your current setup
 
 ### Step 4: Download SSH Keys
 
@@ -265,85 +265,85 @@ ssh my-proxmox-server
 ```
 
 #### Termius (macOS/iOS)
-1. **Open Termius**
-2. **Add new host:**
+1. Open Termius
+2. Add new host:
    - Alias: `Proxmox Server`
    - Hostname: `your-server-ip`
    - Port: `2222`
    - Username: `admin`
-3. **Import key:** Settings → Keys → Import → Select private key
-4. **Enter passphrase** from ALL_PUBLIC_KEYS.txt
+3. Import key: Settings → Keys → Import → Select private key
+4. Enter passphrase from ALL_PUBLIC_KEYS.txt
 
 ### Step 6: Ongoing Management
 
 The SSH Management Suite can be run anytime for:
 
-- **Adding new network ranges** (Option 2)
-- **Rolling back changes** (Option 3)  
-- **Validating configuration** (Option 4)
-- **Re-running hardening** (Option 1)
+- Adding new network ranges (Option 2)
+- Rolling back changes (Option 3)
+- Validating configuration (Option 4)
+- Re-running hardening (Option 1)
 
 Simply run the suite again:
 ```bash
 sudo ./ssh-management-suite.sh
 ```
 
-## 🔄 Advanced Features
+## Advanced Features
 
 ### Session Management
-The suite automatically tracks all SSH modifications and provides comprehensive session management:
+The suite tracks all SSH modifications and provides session management:
 
-- **Session Discovery**: Automatically finds previous hardening sessions
-- **Detailed History**: View exactly what changes were made when
-- **Safe Rollbacks**: Test configurations before applying rollbacks
-- **Selective Restoration**: Choose which parts to rollback
+- Session discovery: finds previous hardening sessions
+- Detailed history: view exactly what changes were made when
+- Safe rollbacks: test configurations before applying rollbacks
+- Selective restoration: choose which parts to rollback
 
 ### Socket Activation Handling
 Modern systemd systems use socket activation which can interfere with SSH port changes. The suite automatically:
 
-- **Detects socket conflicts** that prevent port binding
-- **Safely disables ssh.socket** when needed
-- **Preserves rollback capability** for socket settings
-- **Handles service dependencies** properly
+- Detects socket conflicts that prevent port binding
+- Safely disables ssh.socket when needed
+- Preserves rollback capability for socket settings
+- Handles service dependencies properly
 
 ### Multi-Location Access
-Perfect for users who work from multiple locations:
+For users who work from multiple locations:
 
 ```bash
-# Example: MacBook user with office and home access
+# Example: office and home access
 AllowUsers admin@10.0.0.0/8 admin@192.168.1.0/24 admin@192.168.50.0/24
 ```
 
 This configuration allows SSH access from:
-- **Office network**: 10.x.x.x (Teleport/UniFi/VPN)
-- **Home network 1**: 192.168.1.x 
-- **Home network 2**: 192.168.50.x
+- Office network: 10.x.x.x (Teleport/UniFi/VPN)
+- Home network 1: 192.168.1.x
+- Home network 2: 192.168.50.x
 
-### Comprehensive Validation
+### Validation
 The built-in validation system checks:
 
-- **Service Status**: SSH daemon health and port binding
-- **Security Settings**: Root login, password auth, key auth status
-- **File Permissions**: Key files, authorized_keys, configuration files
-- **Network Configuration**: Socket activation, port conflicts
-- **User Access**: AllowUsers restrictions and authorized_keys setup
+- Service status: SSH daemon health and port binding
+- Security settings: root login, password auth, key auth status
+- File permissions: key files, authorized_keys, configuration files
+- Network configuration: socket activation, port conflicts
+- User access: AllowUsers restrictions and authorized_keys setup
 
-## 🚨 Emergency Recovery
+## Emergency Recovery
 
 ### If Locked Out via SSH
 
-**Option 1: Use Proxmox Console**
-1. Access your LXC/VM via **Proxmox web interface** → Console
+Option 1: Use Proxmox Console
+1. Access your LXC/VM via Proxmox web interface → Console
 2. Run the rollback manager: `sudo ./ssh-management-suite.sh` → Option 3
 3. Select your session and rollback
 
-**Option 2: Direct Rollback Script**
-1. Access via **Proxmox console**
+Option 2: Direct Rollback Script
+1. Access via Proxmox console
 2. Find rollback script: `ls /root/ssh-*-rollback-*.sh`
 3. Execute: `sudo /root/ssh-hardening-rollback-TIMESTAMP.sh`
 
-**Option 3: Manual SSH Config Restore**
-1. Access via **Proxmox console**
+Option 3: Manual SSH Config Restore
+1. Access via Proxmox console
 2. Restore config: `sudo cp /root/ssh-*-backups-*/sshd_config.*.bak /etc/ssh/sshd_config`
 3. Restart SSH: `sudo systemctl restart ssh`
 
@@ -357,48 +357,48 @@ ssh -i ~/.ssh/proxmox-keys/admin_ed25519 -p 2222 admin@your-server-ip
 # If connection fails, use Proxmox console to rollback
 ```
 
-## 🛡️ Security Features
+## Security Details
 
 ### SSH Hardening Applied
 When you run Option 1 (Harden SSH), the following security measures are applied:
 
-**Authentication Security**:
-- Root login: **DISABLED**
-- Password authentication: **DISABLED**  
-- Public key authentication: **ENABLED**
-- Empty passwords: **DISABLED**
+Authentication security:
+- Root login: **disabled**
+- Password authentication: **disabled**
+- Public key authentication: **enabled**
+- Empty passwords: **disabled**
 
-**Connection Security**:
+Connection security:
 - Custom SSH port (default: 2222)
 - User access restrictions (AllowUsers)
-- Maximum auth attempts: **3**
-- Login grace time: **30 seconds**
-- Client alive interval: **5 minutes**
+- Maximum auth attempts: 3
+- Login grace time: 30 seconds
+- Client alive interval: 5 minutes
 
-**Protocol Security**:
+Protocol security:
 - Modern encryption algorithms only
-- Strong key exchange methods  
+- Strong key exchange methods
 - Secure MAC algorithms
 - Protocol version 2 enforced
 
-**Service Security**:
-- X11 forwarding: **DISABLED**
-- Agent forwarding: **DISABLED**
-- TCP forwarding: **DISABLED**
-- Tunneling: **DISABLED**
+Service security:
+- X11 forwarding: disabled
+- Agent forwarding: disabled
+- TCP forwarding: disabled
+- Tunneling: disabled
 
 ### Key Management
-- **Ed25519 keys**: Modern, quantum-resistant cryptography
-- **RSA-4096 keys**: Legacy compatibility for older systems
-- **Encrypted private keys**: Strong random passphrases (25+ characters)
-- **Proper permissions**: 600 for private keys, 644 for public keys
-- **Secure storage**: Keys stored in timestamped directories
+- Ed25519 keys: modern, quantum-resistant cryptography
+- RSA-4096 keys: legacy compatibility for older systems
+- Encrypted private keys: strong random passphrases (25+ characters)
+- Proper permissions: 600 for private keys, 644 for public keys
+- Secure storage: keys stored in timestamped directories
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-**SSH Connection Refused**
+SSH connection refused
 ```bash
 # Check if SSH is running on correct port
 sudo netstat -tlnp | grep :2222
@@ -409,7 +409,7 @@ sudo ./ssh-management-suite.sh
 # Choose Option 4 (Validate) to diagnose issues
 ```
 
-**Permission Denied (publickey)**
+Permission denied (publickey)
 ```bash
 # Verify key permissions on local machine
 chmod 600 ~/.ssh/proxmox-keys/admin_ed25519
@@ -422,7 +422,7 @@ sudo cat /home/admin/.ssh/authorized_keys
 sudo ls -la /home/admin/.ssh/
 ```
 
-**Socket Activation Issues**
+Socket activation issues
 ```bash
 # The suite handles this automatically, but for manual fixes:
 sudo systemctl stop ssh.socket
@@ -431,9 +431,9 @@ sudo systemctl mask ssh.socket
 sudo systemctl restart ssh
 ```
 
-**Validation Failures**
+Validation failures
 ```bash
-# Run comprehensive validation
+# Run validation
 sudo ./ssh-management-suite.sh
 # Choose Option 4 (Validate)
 
@@ -443,12 +443,12 @@ curl -fsSL https://raw.githubusercontent.com/ValkyrieNexus/proxmox-ssh-hardening
 
 ### Getting Help
 
-1. **Run validation first**: Use Option 4 in the suite for detailed diagnostics
-2. **Check service logs**: `sudo journalctl -u ssh -f`
-3. **Test SSH config**: `sudo sshd -t`
-4. **Use Proxmox console**: Always available as backup access method
+1. Run validation first: use Option 4 in the suite for detailed diagnostics
+2. Check service logs: `sudo journalctl -u ssh -f`
+3. Test SSH config: `sudo sshd -t`
+4. Use Proxmox console: always available as backup access method
 
-## 📦 Repository Structure
+## Repository Structure
 
 ```
 proxmox-ssh-hardening/
@@ -458,25 +458,18 @@ proxmox-ssh-hardening/
 └── LICENSE                      # MIT License
 ```
 
-## 🤝 Contributing
+## Contributing
 
-Contributions welcome! The suite is designed to be modular and extensible:
+Contributions welcome. The suite is designed to be modular and extensible:
 
-- **Bug reports**: Issues with specific distributions or edge cases
-- **Feature requests**: Additional SSH security measures or convenience features  
-- **Testing**: Validation on different Debian/Ubuntu versions
-- **Documentation**: Usage examples and troubleshooting guides
+- Bug reports: issues with specific distributions or edge cases
+- Feature requests: additional SSH security measures or convenience features
+- Testing: validation on different Debian/Ubuntu versions
+- Documentation: usage examples and troubleshooting guides
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⭐ Acknowledgments
-
-- Built for **Proxmox homelab environments**
-- Optimized for **multi-location access scenarios**  
-- Designed with **safety and recoverability** in mind
-- Handles **modern systemd complexities** (socket activation, etc.)
-
 ---
-Caution. Keep Proxmox console access available as a backup method.
+Caution: keep Proxmox console access available as a backup method.
